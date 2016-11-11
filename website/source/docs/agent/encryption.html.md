@@ -3,14 +3,14 @@ layout: "docs"
 page_title: "Gossip and RPC Encryption"
 sidebar_current: "docs-agent-encryption"
 description: |-
-  Learn how to configure Nomad to encrypt both its gossip traffic and its RPC
-  traffic.
+  Learn how to configure Nomad to encrypt all of its traffic.
 ---
 
 # Encryption
 
 The Nomad agent supports encrypting all of its network traffic. There are
-two separate encryption systems, one for gossip traffic, and one for RPC.
+two separate encryption systems, one for gossip traffic, and one for HTTP and
+RPC.
 
 ## Gossip
 
@@ -30,7 +30,7 @@ cg8StVXbQJ0gPvMd9o7yrg==
 With that key, you can enable gossip encryption on the agent.
 
 
-## RPC and Raft Encryption with TLS
+## HTTP, RPC, and Raft Encryption with TLS
 
 Nomad supports using TLS to verify the authenticity of servers and clients. To
 enable this, Nomad requires that all clients and servers have key pairs that are
@@ -42,13 +42,23 @@ a certificate is provided that is signed by the Certificate Authority from the
 [`ca_file`][tls] for TLS connections.
 
 If `verify_server_hostname` is set, then outgoing connections perform
-hostname verification. All servers must have a certificate valid for
-`server.<region>.nomad` or the client will reject the handshake. It is also
-recommended for the certificate to sign `localhost` such that the CLI can
-validate the server name.
+hostname verification. Unlike traditional HTTPS browser validation, all servers
+must have a certificate valid for `server.<region>.nomad` or the client will
+reject the handshake. It is also recommended for the certificate to sign
+`localhost` such that the CLI can validate the server name.
 
 TLS is used to secure the RPC calls between agents, but gossip between nodes is
 done over UDP and is secured using a symmetric key. See above for enabling
 gossip encryption.
 
 [tls]: /docs/agent/configuration/tls.html "Nomad TLS Configuration"
+
+### Example TLS Configuration using cfssl
+
+[`cfssl`][cfssl] is a tool for working with TLS certificates and certificate
+authorities similar to [OpenSSL's][openssl] `x509` command line tool.
+
+>>> START HERE MONDAY <<<
+
+[cfssl]: https://cfssl.org/
+[openssl]: https://www.openssl.org/
