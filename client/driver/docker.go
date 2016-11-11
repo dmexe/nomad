@@ -73,6 +73,10 @@ const (
 	// Docker's privileged mode.
 	dockerPrivilegedConfigOption = "docker.privileged.enabled"
 
+	// dockerDefaultLoggerOption is the key for configuring default log driver
+	dockerDefaultSyslogOption  = "docker.default_syslog.enabled"
+	dockerDefaultSyslogDefault = true
+
 	// dockerTimeout is the length of time a request can be outstanding before
 	// it is timed out.
 	dockerTimeout = 1 * time.Minute
@@ -333,6 +337,15 @@ func (d *DockerDriver) Abilities() DriverAbilities {
 	}
 }
 
+func (d *DockerDriver) hasDefaultSyslog(driverConfig *DockerDriverConfig) bool {
+	defaultSyslog := d.config.ReadBoolDefault(dockerDefaultSyslogOption, dockerDefaultSyslogDefault)
+	if defaultSyslog == false {
+		return false
+	}
+
+	return (len(driverConfig.Logging) == 0 || driverConfig.Logging[0].Type == "syslog")
+}
+
 func (d *DockerDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle, error) {
 	// Set environment variables.
 	d.taskEnv.SetAllocDir(allocdir.SharedAllocContainerPath).
@@ -398,9 +411,7 @@ func (d *DockerDriver) Start(ctx *ExecContext, task *structs.Task) (DriverHandle
 
 	// Only launch syslog server if we're going to use it!
 	syslogAddr := ""
-	if runtime.GOOS == "darwin" && len(driverConfig.Logging) == 0 {
-		d.logger.Printf("[DEBUG] driver.docker: disabling syslog driver as Docker for Mac workaround")
-	} else if len(driverConfig.Logging) == 0 || driverConfig.Logging[0].Type == "syslog" {
+	if d.hasDefaultSyslog(driverConfig) {
 		ss, err := exec.LaunchSyslogServer()
 		if err != nil {
 			pluginClient.Kill()
@@ -548,6 +559,17 @@ func (d *DockerDriver) Fingerprint(cfg *config.Config, node *structs.Node) (bool
 		node.Attributes[dockerPrivilegedConfigOption] = "1"
 	}
 
+	if runtime.GOOS == "darwin" {
+		node.Attributes[dockerDefaultSyslogOption] = "0"
+		d.logger.Printf("[DEBUG] driver.docker: deferring logging to docker on Docker for Mac")
+	} else {
+		defaultSyslog := d.config.ReadBoolDefault(dockerDefaultSyslogOption, dockerDefaultSyslogDefault)
+		if defaultSyslog {
+			node.Attributes[dockerDefaultSyslogOption] = "1"
+			d.logger.Printf("[DEBUG] driver.docker: enable default syslog server")
+		}
+	}
+
 	// This is the first operation taken on the client so we'll try to
 	// establish a connection to the Docker daemon. If this fails it means
 	// Docker isn't available so we'll simply disable the docker driver.
@@ -658,14 +680,10 @@ func (d *DockerDriver) createContainerConfig(ctx *ExecContext, task *structs.Tas
 
 	memLimit := int64(task.Resources.MemoryMB) * 1024 * 1024
 
-	if len(driverConfig.Logging) == 0 {
-		if runtime.GOOS != "darwin" {
-			d.logger.Printf("[DEBUG] driver.docker: Setting default logging options to syslog and %s", syslogAddr)
-			driverConfig.Logging = []DockerLoggingOpts{
-				{Type: "syslog", Config: map[string]string{"syslog-address": syslogAddr}},
-			}
-		} else {
-			d.logger.Printf("[DEBUG] driver.docker: deferring logging to docker on Docker for Mac")
+	if d.hasDefaultSyslog(driverConfig) {
+		d.logger.Printf("[DEBUG] driver.docker: Setting default logging options to syslog and %s", syslogAddr)
+		driverConfig.Logging = []DockerLoggingOpts{
+			{Type: "syslog", Config: map[string]string{"syslog-address": syslogAddr}},
 		}
 	}
 
